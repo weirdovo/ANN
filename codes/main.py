@@ -36,7 +36,7 @@ parser.add_argument("--data_dir", type=str, default="./data",
     help="Data directory. Default: ../data")
 parser.add_argument("--train_dir", type=str, default="./train_test",
     help="Training directory for saving model. Default: ./train")
-parser.add_argument("--pretrain_dir", type=str, default="None",
+parser.add_argument("--pretrain_dir", type=str, default=None,
     help="Pre-Training directory for loading pretrained model. Default: None")
 parser.add_argument("--maxlen", type=int, default=35,
     help="Maximum length for training/inference. Default: 35")    
@@ -71,16 +71,20 @@ def fast_evaluate(model, data, batch_size, PAD_ID, device):
 
             # TODO START
             # Implement the Perplexity metric. Basically it should be the same as the loss function used for training the model.
-            tgt_ids = 
-            input_ids = 
+            tgt_ids = input_ids[:, 1:]  # Remove first token (PAD) to get targets
+            input_ids = input_ids[:, :-1]  # Remove last token to get inputs
             outputs = model(input_ids)
             lm_logits = outputs["logits"]
 
             loss = ce_loss_fct(lm_logits.view(-1, lm_logits.shape[-1]), tgt_ids.contiguous().view(-1))
             # HINT: We set the loss to 0 where [PAD] token is the label, except for the last token, where [PAD] token worked as the "eod of sentence" token.
-            loss_mask = 
-            # size of loss: (batch_size,)
-            loss = 
+            loss_mask = (tgt_ids != PAD_ID).float()
+            if tgt_ids.size(1) > 0:
+                loss_mask[:, -1] = 1.0
+            loss = loss.view(tgt_ids.size())
+            loss = loss * loss_mask
+            # Average loss per sequence (sum over sequence length, then mean over batch)
+            loss = loss.sum(dim=1) / loss_mask.sum(dim=1)
             # TODO END
             all_loss.append(loss)
     loss = torch.mean(torch.cat(all_loss, dim=0), dim=0)
@@ -260,6 +264,20 @@ def main():
         model.to(device)
         print(model)
         test_loss, test_ppl = fast_evaluate(model=model, data=data["test"], batch_size=args.batch_size, PAD_ID=PAD_ID, device=device)
+        
+        print("\n[DEBUG] Inspecting token distribution on first step:")
+        with torch.no_grad():
+            # 构造一个起始 token 序列 (batch=1)
+            input_ids = torch.tensor([[PAD_ID]]).to(device)
+            outputs = model(input_ids)
+            logits = outputs["logits"][0, -1]        # shape: [vocab_size]
+            probs = torch.softmax(logits, dim=-1)
+            topk = torch.topk(probs, 20)
+            for i, (idx, p) in enumerate(zip(topk.indices.tolist(), topk.values.tolist())):
+                print(f"{i+1:2d}. {tokenizer.decode([idx]):<10s}  P={p:.4f}")
+                
+        
+        
         print("        test_set, perplexity {:.2f}".format(test_ppl))
         result = model.inference(device=device, PAD_ID=PAD_ID, 
             batch_size=args.batch_size, maxlen=args.maxlen, decode_strategy=args.decode_strategy, temperature=args.temperature, top_p=args.top_p)

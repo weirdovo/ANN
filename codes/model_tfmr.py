@@ -36,6 +36,7 @@ class TfmrAttention(nn.Module):
             "bias",
             # TODO START
             # define the bias term for constructing the causal mask (i.e., seeing only prefix tokens).
+            torch.tril(torch.ones((max_positions, max_positions), dtype=torch.bool)).view(1, 1, max_positions, max_positions)
             # TODO END
         )
         self.register_buffer("masked_bias", torch.tensor(-1e4))
@@ -61,17 +62,17 @@ class TfmrAttention(nn.Module):
     def _attn(self, query, key, value):
         # TODO START
         # implement the multi-head mask self-attnetion mechanism
-        attn_weights = 
+        attn_weights = torch.matmul(query, key.transpose(-1, -2))
 
         if self.scale_attn_weights:
             attn_weights = attn_weights / (float(value.size(-1)) ** 0.5)
 
-        causal_mask = 
+        causal_mask = self.bias[:, :, :attn_weights.size(-2), :attn_weights.size(-1)]
         attn_weights = torch.where(causal_mask, attn_weights, self.masked_bias.to(attn_weights.dtype))
 
-        attn_weights = 
+        attn_weights = F.softmax(attn_weights, dim=-1)
         attn_weights = self.attn_dropout(attn_weights)
-        attn_output = 
+        attn_output = torch.matmul(attn_weights, value)
 
         return attn_output, attn_weights
         # TODO END
@@ -81,6 +82,9 @@ class TfmrAttention(nn.Module):
         # Splits hidden_size dim into attn_head_size and num_heads
         # Input Size: (batch_size, sequence_length, hidden_size)
         # Output Size: (batch_size, num_attn_heads, sequence_length, attn_head_size)
+        new_shape = tensor.size()[:-1] + (num_heads, attn_head_size)
+        tensor = tensor.view(*new_shape)
+        return tensor.permute(0, 2, 1, 3)  # (batch_size, num_heads, seq_len, head_size)
         # TODO END
 
     def _merge_heads(self, tensor, num_heads, attn_head_size):
@@ -88,6 +92,9 @@ class TfmrAttention(nn.Module):
         # Merges attn_head_size dim and num_attn_heads dim into hidden_size
         # Input Size: (batch_size, num_attn_heads, sequence_length, attn_head_size)
         # Output Size: (batch_size, sequence_length, hidden_size)
+        tensor = tensor.permute(0, 2, 1, 3).contiguous()  # (batch_size, seq_len, num_heads, head_size)
+        new_shape = tensor.size()[:-2] + (num_heads * attn_head_size,)
+        return tensor.view(*new_shape)
         # TODO END
 
     def forward(
@@ -221,7 +228,8 @@ class TfmrModel(nn.Module):
 
         # TODO START
         # Implement the positional embeddings. Note that the length of cache hidden states used during inference
-        position_embeds = 
+        position_ids = torch.arange(past_length, input_shape[-1] + past_length, dtype=torch.long, device=device)
+        position_embeds = self.wpe(position_ids)
         # TODO END
         hidden_states = inputs_embeds + position_embeds
 
@@ -290,6 +298,20 @@ class TfmrLMHeadModel(nn.Module):
             # TODO START
             # Implement the loss function. Note that you should shift logits so that tokens < n predict n
             # HINT: We set the loss to 0 where [PAD] token is the label, except for the last token, where [PAD] token worked as the "eod of sentence" token.
+            shift_logits = lm_logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+        
+            token_loss = ce_loss_fct(shift_logits.view(-1, shift_logits.size(-1)),
+                                    shift_labels.view(-1)).view_as(shift_labels)  # [B, T-1]
+
+            mask = (shift_labels != PAD_ID).float()
+            if shift_labels.size(1) > 0:
+                mask[:, -1] = 1.0
+
+            per_seq_den = mask.sum(dim=1).clamp_min(1.0)     # [B]
+            per_seq_loss = (token_loss * mask).sum(dim=1) / per_seq_den  # [B]
+
+            loss = per_seq_loss.mean() 
             # TODO END
 
         return {
@@ -319,6 +341,19 @@ class TfmrLMHeadModel(nn.Module):
                     if decode_strategy == "top-p":
                         # TODO START
                         # implement top-p sampling
+                        sorted_logits, sorted_indices = torch.sort(logits, descending=True)
+                        probs = F.softmax(sorted_logits, dim=-1)
+                        cumulative_probs = torch.cumsum(probs, dim=-1)
+
+                        sorted_indices_to_remove = cumulative_probs > top_p
+                        sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
+                        sorted_indices_to_remove[..., 0] = 0
+                        
+                        indices_to_remove = torch.zeros_like(logits, dtype=torch.bool)
+                        indices_to_remove.scatter_(1, sorted_indices, sorted_indices_to_remove)
+
+                        logits = logits.masked_fill(indices_to_remove, float('-inf'))
+
                         # TODO END
                     prob = logits.softmax(dim=-1) # shape: (batch_size, num_vocabs)
                     now_token = torch.multinomial(prob, 1)[:, :1] # shape: (batch_size)
