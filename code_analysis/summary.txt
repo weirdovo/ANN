@@ -1,37 +1,53 @@
 ########################
-# Missing Files
+# Additional Files
 ########################
-# config.json
+# test.sh
+# data
+# __pycache__
+# output
+# logs
+# tokenizer
+# train.sh
+# output_transformer_finetune_temp0.7_top1.0.txt
 # .DS_Store
-# configuration.py
-# tokenizer.py
+# checkpoints
 
 ########################
 # Filled Code
 ########################
-# ../codes2/model_tfmr.py:1
-            torch.tril(torch.ones((max_positions, max_positions), dtype=torch.uint8)).view(
-                1, 1, max_positions, max_positions
-            ),
+# ../codes/main.py:1
+            tgt_ids = input_ids[:, 1:]  # Remove first token (PAD) to get targets
+            input_ids = input_ids[:, :-1]  # Remove last token to get inputs
+            loss_mask = (tgt_ids != PAD_ID).float()
+            if tgt_ids.size(1) > 0:
+                loss_mask[:, -1] = 1.0
+            loss = loss.view(tgt_ids.size())
+            loss = loss * loss_mask
+            # Average loss per sequence (sum over sequence length, then mean over batch)
+            loss = loss.sum(dim=1) / loss_mask.sum(dim=1).clamp_min(1.0)
 
-# ../codes2/model_tfmr.py:2
+# ../codes/model_tfmr.py:1
+            torch.tril(torch.ones((max_positions, max_positions), dtype=torch.bool)).view(1, 1, max_positions, max_positions)
+
+# ../codes/model_tfmr.py:2
         attn_weights = torch.matmul(query, key.transpose(-1, -2))
-        query_length, key_length = query.size(-2), key.size(-2)
-        causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length].bool()
-        attn_weights = nn.Softmax(dim=-1)(attn_weights)
+        Lq, Lk = query.size(-2), key.size(-2)
+        causal_mask = self.bias[:, :, Lk-Lq:Lk, :Lk].to(attn_weights.device)
+        attn_weights = torch.where(causal_mask, attn_weights, self.masked_bias.to(dtype=attn_weights.dtype, device=attn_weights.device))
+        attn_weights = F.softmax(attn_weights, dim=-1)
         attn_output = torch.matmul(attn_weights, value)
 
-# ../codes2/model_tfmr.py:3
+# ../codes/model_tfmr.py:3
         new_shape = tensor.size()[:-1] + (num_heads, attn_head_size)
         tensor = tensor.view(*new_shape)
-        return tensor.permute(0, 2, 1, 3)  # (batch, head, seq_length, head_features)
+        return tensor.permute(0, 2, 1, 3)  # (batch_size, num_heads, seq_len, head_size)
 
-# ../codes2/model_tfmr.py:4
-        tensor = tensor.permute(0, 2, 1, 3).contiguous()
+# ../codes/model_tfmr.py:4
+        tensor = tensor.permute(0, 2, 1, 3).contiguous()  # (batch_size, seq_len, num_heads, head_size)
         new_shape = tensor.size()[:-2] + (num_heads * attn_head_size,)
-        return tensor.view(new_shape)
+        return tensor.view(*new_shape)
 
-# ../codes2/model_tfmr.py:5
+# ../codes/model_tfmr.py:5
         hidden_states = attn_output + residual
 
         residual = hidden_states
@@ -39,52 +55,43 @@
         feed_forward_hidden_states = self.mlp(hidden_states)
         # residual connection
         hidden_states = residual + feed_forward_hidden_states
-
-# ../codes2/model_tfmr.py:6
-        if past_key_values is None:
-            past_length = 0
-            past_key_values = tuple([None] * len(self.h))
-        else:
-            past_length = past_key_values[0][0].size(-2)
-
         position_ids = torch.arange(past_length, input_shape[-1] + past_length, dtype=torch.long, device=device)
-        position_ids = position_ids.unsqueeze(0).view(-1, input_shape[-1])
-        position_embeds = self.wpe(position_ids)
+        position_embeds = self.wpe(position_ids).unsqueeze(0).expand_as(inputs_embeds)
 
-# ../codes2/model_tfmr.py:7
+# ../codes/model_tfmr.py:6
             shift_logits = lm_logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()
 
-            pad_pos = torch.eq(shift_labels, PAD_ID).to(torch.float).to(labels.device)
-            pad_pos = torch.cat([torch.zeros([shift_labels.size()[0], 1]).to(labels.device), pad_pos[:, :-1]], 1)
-            loss_mask = 1. - pad_pos
-            loss = ce_loss_fct(shift_logits.view(-1, shift_logits.shape[-1]), shift_labels.view(-1))
-            loss = torch.mean(torch.sum(loss.view(shift_labels.size()[0], -1) * loss_mask, 1) / (torch.sum(loss_mask, 1) + 1e-20))
+            token_loss = ce_loss_fct(shift_logits.view(-1, shift_logits.size(-1)),
+                                    shift_labels.view(-1)).view_as(shift_labels)
 
-# ../codes2/model_tfmr.py:8
+            if PAD_ID is not None:
+                mask = shift_labels.ne(PAD_ID)
+                mask[..., -1] = True
+            else:
+                mask = torch.ones_like(shift_labels, dtype=torch.bool)
+
+            per_seq_den = mask.sum(dim=1).clamp_min(1.0)
+            per_seq_loss = (token_loss * mask).sum(dim=1) / per_seq_den
+
+            loss = per_seq_loss.mean()
+
+# ../codes/model_tfmr.py:7
                         sorted_logits, sorted_indices = torch.sort(logits, descending=True)
-                        cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+                        probs = F.softmax(sorted_logits, dim=-1)
+                        cumulative_probs = torch.cumsum(probs, dim=-1)
 
-                        # Remove tokens with cumulative probability above the threshold
                         sorted_indices_to_remove = cumulative_probs > top_p
-                        # Shift the indices to the right to keep also the first token above the threshold
-                        sorted_indices_to_remove[:, 1:] = sorted_indices_to_remove[:, :-1].clone()
-                        sorted_indices_to_remove[:, 0] = 0
-                        sorted_indices = (sorted_indices + torch.arange(sorted_indices.shape[0], device=device, dtype=torch.long).unsqueeze(-1) * sorted_indices.shape[1])
+                        if sorted_indices_to_remove.size(-1) > 1:
+                            shifted = sorted_indices_to_remove[..., :-1].clone()
+                            sorted_indices_to_remove[..., 1:] = shifted
+                        sorted_indices_to_remove[..., 0] = False
 
-                        indices_to_remove = torch.masked_select(sorted_indices, sorted_indices_to_remove)
-                        logits = logits.reshape(-1)
-                        logits = torch.index_fill(logits, 0, indices_to_remove, -float("inf"))
-                        logits = logits.reshape(sorted_indices.shape[0], sorted_indices.shape[1])
+                        indices_to_remove = torch.zeros_like(logits, dtype=torch.bool)
+                        indices_to_remove.scatter_(1, sorted_indices, sorted_indices_to_remove)
 
-# ../codes2/main.py:1
-            tgt_ids = input_ids[:, 1:]
-            input_ids = input_ids[:, :-1]
-            lm_logits = outputs["logits"]
-            pad_pos = torch.eq(tgt_ids, PAD_ID).to(torch.float).to(device)
-            pad_pos = torch.cat([torch.zeros([ed-st, 1]).to(device), pad_pos[:, :-1]], 1)
-            loss_mask = 1. - pad_pos
-            loss = torch.sum(loss.view(input_ids.size()[0], -1) * loss_mask, 1) / (torch.sum(loss_mask, 1) + 1e-20)
+                        logits = logits.masked_fill(indices_to_remove, -float('inf'))
+
 
 
 ########################
@@ -94,71 +101,37 @@
 ########################
 # Other Modifications
 ########################
-# _codes/model_tfmr.py -> ../codes2/model_tfmr.py
-# 1 - from turtle import position
-# 83 +         """
-# 84 +         Splits hidden_size dim into attn_head_size and num_heads
-# 85 +         """
-# 94 +         """
-# 95 +         Merges attn_head_size dim and num_attn_heads dim into hidden_size
-# 96 +         """
-# 286 -
-# 321 -
-# 371 +
-# _codes/main.py -> ../codes2/main.py
-# 42 - parser.add_argument('--train_dir', type=str, default='./train_test',
-# 42 + parser.add_argument('--train_dir', type=str, default='./train_test_pretrain_1612',
-# 42 ?                                                                   ++++++++++++++
-# 44 - parser.add_argument('--pretrain_dir', type=str, default='None',
-# 44 ?                                                         ^^^ ^^
-# 44 + parser.add_argument('--pretrain_dir', type=str, default="pretrain_1612",
-# 44 ?                                                         ^^^^^^^^ ^^^^^^
-# 48 - parser.add_argument('--decode_strategy', type=str, choices=["random", "top-p"], default="random",
-# 48 ?                                                                                          ^^^^ ^
-# 48 + parser.add_argument('--decode_strategy', type=str, choices=["random", "top-p"], default="top-p",
-# 48 ?                                                                                          ^ ^^^
-# 52 - parser.add_argument('--top_p', type=float, default=1.0,
-# 52 ?                                                    ^ ^
-# 52 + parser.add_argument('--top_p', type=float, default=0.9,
-# 52 ?                                                    ^ ^
-# 53 -     help='The p for top-p sampling. Default: 1.0')
-# 53 ?                                              ^ ^
-# 53 +     help='The p for top-p sampling. Default: 0.9')
-# 53 ?                                              ^ ^
-# 97 +         print(weights)
-# 98 +
-# 99 +         # for i in range(sample_hyps_num):
-# 100 +         #     print(i)
-# 101 +         #     print(gen_ids[i])
-# 102 +         #     print(truth_ids[i])
-# 103 +         #     bleu_irl_fw.append(sentence_bleu(truth_ids, gen_ids[i], weights=weights, smoothing_function=SmoothingFunction().method1))
-# 104 +         #     bleu_irl_bw.append(sentence_bleu(gen_ids, truth_ids[i], weights=weights, smoothing_function=SmoothingFunction().method1))
-# 105 +
-# 169 +     # from transformers import GPT2LMHeadModel, AutoModel, AutoConfig
-# 170 +     # model = GPT2LMHeadModel.from_pretrained("/home/data/guanjian/transformers_model/gpt2")
-# 171 +     # # config = AutoConfig.from_pretrained("../config.json")
-# 172 +     # with open("./config.json") as fin:
-# 173 +     #     model_config = json.load(fin)
-# 174 +     #     # model_config["n_layer"] = 12
-# 175 +     #     config = ModelConfig(**model_config)
-# 176 +     # model2 = TfmrLMHeadModel(config)
-# 177 +
-# 178 +     # src_dict = model.state_dict()
-# 179 +     # tgt_dict = model2.state_dict()
-# 180 +     # print(src_dict.keys())
-# 181 +     # print(tgt_dict.keys())
-# 182 +     # for key in tgt_dict.keys():
-# 183 +     #     src_key = key.replace("h.1", "h.6").replace("h.2", "h.11")
-# 184 +     #     src_size = list(src_dict[src_key].size())
-# 185 +     #     tgt_size = list(tgt_dict[key].size())
-# 186 +     #     assert len(src_size) == len(tgt_size)
-# 187 +     #     tmp_tensor = src_dict[src_key]
-# 188 +     #     tgt_dict[key] = tmp_tensor
-# 189 +     # model2.load_state_dict(tgt_dict)
-# 190 +     # with open('./checkpoint_pretrain.pth.tar', 'wb') as fout:
-# 191 +     #     torch.save(model2, fout)
-# 192 +     # exit()
-# 289 +         # print("        test_set, forward BLEU-1 %.3f, backward BLEU-1 %.3f, harmonic BLEU-1 %.3f" % (eval_result["fw-bleu-1"], eval_result["bw-bleu-1"], eval_result["fw-bw-bleu-1"]))
-# 290 +         # print("        test_set, forward BLEU-2 %.3f, backward BLEU-2 %.3f, harmonic BLEU-2 %.3f" % (eval_result["fw-bleu-2"], eval_result["bw-bleu-2"], eval_result["fw-bw-bleu-2"]))
-# 291 +         # print("        test_set, forward BLEU-3 %.3f, backward BLEU-3 %.3f, harmonic BLEU-3 %.3f" % (eval_result["fw-bleu-3"], eval_result["bw-bleu-3"], eval_result["fw-bw-bleu-3"]))
+# _codes/main.py -> ../codes/main.py
+# 39 - parser.add_argument("--pretrain_dir", type=str, default="None",
+# 39 ?                                                         -    -
+# 39 + parser.add_argument("--pretrain_dir", type=str, default=None,
+# 262 -         test_loss, test_ppl = fast_evaluate(model=model, data=data["test"], batch_size=args.batch_size, PAD_ID=PAD_ID, device=device)
+# 266 +         test_loss, test_ppl = fast_evaluate(model=model, data=data["test"], batch_size=args.batch_size, PAD_ID=PAD_ID, device=device)
+# 266 ?                                                                                                                                      ++++++++
+# _codes/model_tfmr.py -> ../codes/model_tfmr.py
+# 151 + class RMSNorm(nn.Module):
+# 152 +     def __init__(self, hidden_size, eps=1e-8):
+# 153 +         super().__init__()
+# 154 +         self.eps = eps
+# 155 +         self.weight = nn.Parameter(torch.ones(hidden_size))
+# 156 +
+# 157 +     def forward(self, x):
+# 158 +         # x: [batch, seq_len, hidden_size]
+# 159 +         rms = x.pow(2).mean(dim=-1, keepdim=True).add(self.eps).sqrt()
+# 160 +         x_norm = x / rms
+# 161 +         return x_norm * self.weight
+# 162 +
+# 149 -         self.ln_1 = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
+# 169 +         # self.ln_1 = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
+# 169 ?        ++
+# 170 +         self.ln_1 = RMSNorm(hidden_size, eps=config.layer_norm_epsilon)
+# 151 -         self.ln_2 = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
+# 172 +         # self.ln_2 = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
+# 172 ?        ++
+# 173 +         self.ln_2 = RMSNorm(hidden_size, eps=config.layer_norm_epsilon)
+# 175 +
+# 198 +         hidden_states = self.ln_2(hidden_states)
+# 199 +         feed_forward_hidden_states = self.mlp(hidden_states)
+# 200 +         # residual connection
+# 201 +         hidden_states = residual + feed_forward_hidden_states
 

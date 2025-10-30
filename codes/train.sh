@@ -4,15 +4,14 @@
 # This script provides various training configurations and options
 
 # Set default values
-EXPERIMENT_NAME="transformer_finetune"
+EXPERIMENT_NAME="tfmr_scratch_rmsnorm"
 BATCH_SIZE=32
-LEARNING_RATE=1e-5     # lower
-NUM_EPOCHS=40
+LEARNING_RATE=1e-4   
+NUM_EPOCHS=20
 MAXLEN=35
-DECODE_STRATEGY="top-p"
-TEMPERATURE=1.0
-TOP_P=1.0
-PRETRAIN_DIR="./checkpoints"
+# DECODE_STRATEGY="random"
+# TEMPERATURE=1.0
+# TOP_P=1.0
 
 
 
@@ -29,9 +28,9 @@ echo "Batch Size: $BATCH_SIZE"
 echo "Learning Rate: $LEARNING_RATE"
 echo "Number of Epochs: $NUM_EPOCHS"
 echo "Max Length: $MAXLEN"
-echo "Decode Strategy: $DECODE_STRATEGY"
-echo "Temperature: $TEMPERATURE"
-echo "Top-p: $TOP_P"
+# echo "Decode Strategy: $DECODE_STRATEGY"
+# echo "Temperature: $TEMPERATURE"
+# echo "Top-p: $TOP_P"
 echo "Log File: $LOG_FILE"
 echo "=========================================="
 
@@ -59,40 +58,4 @@ python main.py \
     --data_dir "./data" \
     --train_dir "./checkpoints" \
     --maxlen "$MAXLEN" \
-    --decode_strategy "$DECODE_STRATEGY" \
-    --temperature "$TEMPERATURE" \
-    --top_p "$TOP_P" \
-    --pretrain_dir "$PRETRAIN_DIR" \
     2>&1 | tee "$LOG_FILE"
-
-# Check if training completed successfully
-# if [ ${PIPESTATUS[0]} -eq 0 ]; then
-#     echo "=========================================="
-#     echo "Training completed successfully at $(date)"
-#     echo "Checkpoint saved in: ./checkpoints/checkpoint_${EXPERIMENT_NAME}.bin"
-#     echo "Config saved in: ./checkpoints/config.json"
-#     echo "Log saved in: $LOG_FILE"
-    
-#     # Run evaluation if training was successful
-#     echo "=========================================="
-#     echo "Running evaluation on test set..."
-#     python main.py \
-#         --test "$EXPERIMENT_NAME" \
-#         --model_config "./config.json" \
-#         --tokenizer_dir "./tokenizer" \
-#         --batch_size "$BATCH_SIZE" \
-#         --data_dir "./data" \
-#         --train_dir "./checkpoints" \
-#         --maxlen "$MAXLEN" \
-#         --decode_strategy "$DECODE_STRATEGY" \
-#         --temperature "$TEMPERATURE" \
-#         --top_p "$TOP_P" \
-#         2>&1 | tee "logs/evaluation_${EXPERIMENT_NAME}_$(date +%Y%m%d_%H%M%S).log"
-    
-#     echo "=========================================="
-#     echo "Evaluation completed. Results saved in output_${DECODE_STRATEGY}.txt"
-# else
-#     echo "=========================================="
-#     echo "Training failed. Check the log file: $LOG_FILE"
-#     exit 1
-# fi

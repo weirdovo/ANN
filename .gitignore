@@ -1,5 +1,6 @@
 __pycache__/
-output_random.txt
-output_top-p.txt
+output/
 logs/
 checkpoints/
+*.png
+*.md

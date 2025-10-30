@@ -4,26 +4,13 @@
 # This script provides various training configurations and options
 
 # Set default values
-EXPERIMENT_NAME="transformer_finetune"
+EXPERIMENT_NAME="tfmr_scratch_rmsnorm"
 BATCH_SIZE=32
-LEARNING_RATE=1e-4
-NUM_EPOCHS=20
 MAXLEN=35
-DECODE_STRATEGY="top-p"
-TEMPERATURE=0.9
-TOP_P=0.9
+DECODE_STRATEGY="random"
+TEMPERATURE=0.7
+TOP_P=1.0
 
-echo "Starting training with the following configuration:"
-echo "Experiment Name: $EXPERIMENT_NAME"
-echo "Batch Size: $BATCH_SIZE"
-echo "Learning Rate: $LEARNING_RATE"
-echo "Number of Epochs: $NUM_EPOCHS"
-echo "Max Length: $MAXLEN"
-echo "Decode Strategy: $DECODE_STRATEGY"
-echo "Temperature: $TEMPERATURE"
-echo "Top-p: $TOP_P"
-echo "Log File: $LOG_FILE"
-echo "=========================================="
 
 # Run evaluation if training was successful
 echo "=========================================="
