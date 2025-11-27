@@ -84,7 +84,7 @@ def fast_evaluate(model, data, batch_size, PAD_ID, device):
             loss = loss.view(tgt_ids.size())
             loss = loss * loss_mask
             # Average loss per sequence (sum over sequence length, then mean over batch)
-            loss = loss.sum(dim=1) / loss_mask.sum(dim=1)
+            loss = loss.sum(dim=1) / loss_mask.sum(dim=1).clamp_min(1.0)
             # TODO END
             all_loss.append(loss)
     loss = torch.mean(torch.cat(all_loss, dim=0), dim=0)
@@ -263,21 +263,7 @@ def main():
         model, config = load_model(args.train_dir, model_name=f"checkpoint_{args.test}.bin")
         model.to(device)
         print(model)
-        test_loss, test_ppl = fast_evaluate(model=model, data=data["test"], batch_size=args.batch_size, PAD_ID=PAD_ID, device=device)
-        
-        print("\n[DEBUG] Inspecting token distribution on first step:")
-        with torch.no_grad():
-            # 构造一个起始 token 序列 (batch=1)
-            input_ids = torch.tensor([[PAD_ID]]).to(device)
-            outputs = model(input_ids)
-            logits = outputs["logits"][0, -1]        # shape: [vocab_size]
-            probs = torch.softmax(logits, dim=-1)
-            topk = torch.topk(probs, 20)
-            for i, (idx, p) in enumerate(zip(topk.indices.tolist(), topk.values.tolist())):
-                print(f"{i+1:2d}. {tokenizer.decode([idx]):<10s}  P={p:.4f}")
-                
-        
-        
+        test_loss, test_ppl = fast_evaluate(model=model, data=data["test"], batch_size=args.batch_size, PAD_ID=PAD_ID, device=device)        
         print("        test_set, perplexity {:.2f}".format(test_ppl))
         result = model.inference(device=device, PAD_ID=PAD_ID, 
             batch_size=args.batch_size, maxlen=args.maxlen, decode_strategy=args.decode_strategy, temperature=args.temperature, top_p=args.top_p)

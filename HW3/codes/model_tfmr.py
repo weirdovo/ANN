@@ -67,8 +67,9 @@ class TfmrAttention(nn.Module):
         if self.scale_attn_weights:
             attn_weights = attn_weights / (float(value.size(-1)) ** 0.5)
 
-        causal_mask = self.bias[:, :, :attn_weights.size(-2), :attn_weights.size(-1)]
-        attn_weights = torch.where(causal_mask, attn_weights, self.masked_bias.to(attn_weights.dtype))
+        Lq, Lk = query.size(-2), key.size(-2)
+        causal_mask = self.bias[:, :, Lk-Lq:Lk, :Lk].to(attn_weights.device)
+        attn_weights = torch.where(causal_mask, attn_weights, self.masked_bias.to(dtype=attn_weights.dtype, device=attn_weights.device))
 
         attn_weights = F.softmax(attn_weights, dim=-1)
         attn_weights = self.attn_dropout(attn_weights)
@@ -147,16 +148,31 @@ class TfmrMLP(nn.Module):
         return hidden_states
 
 
+class RMSNorm(nn.Module):
+    def __init__(self, hidden_size, eps=1e-8):
+        super().__init__()
+        self.eps = eps
+        self.weight = nn.Parameter(torch.ones(hidden_size))
+
+    def forward(self, x):
+        # x: [batch, seq_len, hidden_size]
+        rms = x.pow(2).mean(dim=-1, keepdim=True).add(self.eps).sqrt()
+        x_norm = x / rms
+        return x_norm * self.weight
+
 class TfmrBlock(nn.Module):
     def __init__(self, config):
         super().__init__()
         hidden_size = config.hidden_size
         inner_dim = config.n_inner if config.n_inner is not None else 4 * hidden_size
 
-        self.ln_1 = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
+        # self.ln_1 = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
+        self.ln_1 = RMSNorm(hidden_size, eps=config.layer_norm_epsilon)
         self.attn = TfmrAttention(config)
-        self.ln_2 = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
+        # self.ln_2 = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
+        self.ln_2 = RMSNorm(hidden_size, eps=config.layer_norm_epsilon)
         self.mlp = TfmrMLP(inner_dim, config)
+        
 
     def forward(
         self,
@@ -229,7 +245,7 @@ class TfmrModel(nn.Module):
         # TODO START
         # Implement the positional embeddings. Note that the length of cache hidden states used during inference
         position_ids = torch.arange(past_length, input_shape[-1] + past_length, dtype=torch.long, device=device)
-        position_embeds = self.wpe(position_ids)
+        position_embeds = self.wpe(position_ids).unsqueeze(0).expand_as(inputs_embeds)
         # TODO END
         hidden_states = inputs_embeds + position_embeds
 
@@ -302,14 +318,16 @@ class TfmrLMHeadModel(nn.Module):
             shift_labels = labels[..., 1:].contiguous()
         
             token_loss = ce_loss_fct(shift_logits.view(-1, shift_logits.size(-1)),
-                                    shift_labels.view(-1)).view_as(shift_labels)  # [B, T-1]
+                                    shift_labels.view(-1)).view_as(shift_labels) 
 
-            mask = (shift_labels != PAD_ID).float()
-            if shift_labels.size(1) > 0:
-                mask[:, -1] = 1.0
+            if PAD_ID is not None:
+                mask = shift_labels.ne(PAD_ID)
+                mask[..., -1] = True
+            else:
+                mask = torch.ones_like(shift_labels, dtype=torch.bool)
 
-            per_seq_den = mask.sum(dim=1).clamp_min(1.0)     # [B]
-            per_seq_loss = (token_loss * mask).sum(dim=1) / per_seq_den  # [B]
+            per_seq_den = mask.sum(dim=1).clamp_min(1.0)     
+            per_seq_loss = (token_loss * mask).sum(dim=1) / per_seq_den  
 
             loss = per_seq_loss.mean() 
             # TODO END
@@ -346,13 +364,15 @@ class TfmrLMHeadModel(nn.Module):
                         cumulative_probs = torch.cumsum(probs, dim=-1)
 
                         sorted_indices_to_remove = cumulative_probs > top_p
-                        sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
-                        sorted_indices_to_remove[..., 0] = 0
+                        if sorted_indices_to_remove.size(-1) > 1:
+                            shifted = sorted_indices_to_remove[..., :-1].clone()
+                            sorted_indices_to_remove[..., 1:] = shifted
+                        sorted_indices_to_remove[..., 0] = False  
                         
                         indices_to_remove = torch.zeros_like(logits, dtype=torch.bool)
                         indices_to_remove.scatter_(1, sorted_indices, sorted_indices_to_remove)
 
-                        logits = logits.masked_fill(indices_to_remove, float('-inf'))
+                        logits = logits.masked_fill(indices_to_remove, -float('inf'))
 
                         # TODO END
                     prob = logits.softmax(dim=-1) # shape: (batch_size, num_vocabs)
