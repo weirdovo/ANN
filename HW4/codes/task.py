@@ -39,10 +39,9 @@ class Math:
 
         if prompt_func.__name__ == 'zero_shot' or prompt_func.__name__ == 'cot' or prompt_func.__name__ == 'few_shot':
             prompt = prompt_func(question, self.dataset)
-            # print(prompt)
+            print(prompt)
             response = get_model_response(self.client, self.model, prompt)
         else:
-            prompt = f"Question: {question}\nAnswer:"  # Default prompt for scaling functions
             response = prompt_func(self.client, self.model, question)
 
         return {
@@ -86,13 +85,13 @@ class Math:
         return final_results
 
     def evaluate(self, data, program_id):
-        scores = compute_scores(data, f"./results/{self.model_name}_{self.dataset}_{program_id}_eval.json")
+        scores = compute_scores(data, f"./results/{self.model_name}_{program_id}_eval.json")
         print("final score: ", scores)
         print("Evaluation completed.")
         return scores
      
     def test(self, prompt, program_id='all', limit=None):
-        results = self.generate_all(prompt, program_id, limit=limit, output_path=f"./results/{self.model_name}_{self.dataset}_{program_id}_generated.jsonl")
+        results = self.generate_all(prompt, program_id, limit=limit, output_path=f"./results/{self.model_name}_{program_id}_generated.jsonl")
         level_results = defaultdict(list)
 
         for item, result in zip(self.data, results):
@@ -100,7 +99,7 @@ class Math:
             level_results[level].append(result)
             
         for level, group in level_results.items():
-            score = compute_scores(group, f"./results/{self.model_name}_{self.dataset}_{program_id}_level_{level}_eval.json")
+            score = compute_scores(group, f"./results/{self.model_name}_{program_id}_level_{level}_eval.json")
             print(f"Level: {level}, Count: {len(group)}, Score: {score}")
                 
         final_score = self.evaluate(results, program_id)

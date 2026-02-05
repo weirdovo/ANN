@@ -1,6 +1,6 @@
 from openai import OpenAI
 
-def get_model_response(client, model, prompt, max_retries=10):
+def get_model_response(client, model, prompt, max_retries=8):
     for attempt in range(max_retries):
         try:
             response = client.chat.completions.create(
