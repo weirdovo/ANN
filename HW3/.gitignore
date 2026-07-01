@@ -4,3 +4,4 @@ logs/
 checkpoints/
 *.png
 *.md
+.DS_Store

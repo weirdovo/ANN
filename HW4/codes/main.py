@@ -41,7 +41,7 @@ def main():
 			# If you want to check the output of your model, use task.test(prompt, i, output=True)
 			task.test(
 				prompt, 
-				program_id=1
+				program_id='all'
 			)
 			# TODO END
 	

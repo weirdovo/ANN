@@ -1,0 +1,107 @@
+########################
+# Additional Files
+########################
+# __pycache__
+# utils
+# results
+# data
+# .DS_Store
+# test.sh
+# report.md
+
+########################
+# Filled Code
+########################
+# ../codes/prompt.py:1
+    prompt = f"Question: {problem}\nAnswer:"
+    return prompt
+
+# ../codes/prompt.py:2
+    from utils.math_opensource_utils.examples import get_examples
+    import random
+    examples_dict = get_examples()
+    if task == 'gsm8k':
+        examples_key = 'gsm8k'
+    elif task == 'math500':
+        examples_key = 'math500'
+    else:
+        raise ValueError(f"Unknown task: {task}")
+
+    examples = examples_dict.get(examples_key, [])
+
+    if not examples or shot <= 0:
+        return f"Question: {problem}\nAnswer:"
+
+    sample_size = min(shot, len(examples))
+    selected_examples = random.sample(examples, sample_size)
+
+    example_prompts = []
+    for question, answer in selected_examples:
+        example_prompts.append(f"Question: {question}\nAnswer: {answer}")
+
+    prompt = "\n\n".join(example_prompts) + "\n\n" + f"Question: {problem}\nAnswer:"
+    return prompt
+
+# ../codes/main.py:1
+            task.test(
+                scaling,
+                program_id='all'
+            )
+
+# ../codes/main.py:2
+            task.test(
+                prompt,
+                program_id='all'
+            )
+
+# ../codes/scale.py:1
+
+    from collections import Counter
+    from utils.math_opensource_utils.parser import extract_answer, strip_string
+
+    if sample <= 0:
+        sample = 1
+
+    prompt_template = "Question: {}\nAnswer:"
+    extracted_answers = []
+
+    for _ in range(sample):
+        prompt = prompt_template.format(problem)
+        response = get_model_response(client, model, prompt)
+        if not response:
+            continue
+        answer = extract_answer(response, 'math500box')
+        answer = strip_string(answer)
+        if not answer:
+            answer = response.strip()
+
+        extracted_answers.append(answer)
+
+    if not extracted_answers:
+        result = ""
+        return result
+
+    vote_counter = Counter(extracted_answers)
+    final_answer = vote_counter.most_common(1)[0][0]
+
+    result = f"The answer is {final_answer}"
+    print(f"Majority Voting Result: {final_answer}")
+
+# ../codes/scale.py:2
+
+
+########################
+# References
+########################
+
+########################
+# Other Modifications
+########################
+# _codes/prompt.py -> ../codes/prompt.py
+# 1 + from numpy import promote_types
+# 2 +
+# 3 +
+# 8 -
+# 9 -     pass
+# 20 -     pass
+

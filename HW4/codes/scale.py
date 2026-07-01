@@ -1,6 +1,6 @@
 from api import get_model_response
 
-def majority_voting(client, model, problem, sample = 10):
+def majority_voting(client, model, problem, sample = 5):
 	# TODO START
 	# To get model's response for the prompt, use get_model_response(client, model, prompt).
 	# You can change the number of shots with the 'sample' variable.
@@ -19,8 +19,6 @@ def majority_voting(client, model, problem, sample = 10):
 		response = get_model_response(client, model, prompt)
 		if not response:
 			continue
-		
-		# Use 'math500box' as default - it handles both \boxed{} and "answer is" patterns
 		answer = extract_answer(response, 'math500box')
 		answer = strip_string(answer)
 		if not answer:
