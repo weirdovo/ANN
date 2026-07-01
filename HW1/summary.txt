@@ -1,0 +1,393 @@
+########################
+# Additional Files
+########################
+# __pycache__
+# README.md
+# run_mlp.sh
+# data
+
+########################
+# Filled Code
+########################
+# ../codes/layers.py:1
+        self._saved_for_backward(input)
+        lambda_ = 1.0570
+        alpha_ = 1.67326
+        out = np.where(input > 0,
+                       lambda_ * input,
+                       lambda_ * alpha_ * (np.exp(input) - 1)
+                       )
+        return out
+
+# ../codes/layers.py:2
+        lambda_ = 1.0570
+        alpha_ = 1.67326
+        x = self._saved_tensor
+        grad_input = np.where(x > 0,
+                              lambda_,
+                              lambda_ * alpha_ * np.exp(x)
+                              )
+        return grad_output * grad_input
+
+# ../codes/layers.py:3
+        self._saved_for_backward(input)
+        output = np.where(input <= -3,
+                          0,
+                          np.where(input >= 3, input, input*(input+3)/6)
+                         )
+        return output
+
+# ../codes/layers.py:4
+        x = self._saved_tensor
+        grad_input = np.where(x <= -3,
+                              0,
+                              np.where(x > 3, 1, (2*x+3)/6)
+                              )
+        return grad_output * grad_input
+
+# ../codes/layers.py:5
+        self._saved_for_backward(input)
+        output = input*np.tanh(np.log(1+np.exp(input)))
+        return output
+
+# ../codes/layers.py:6
+        x = self._saved_tensor
+        g1 = np.tanh(np.log(1+np.exp(x)))
+        g2 = 4*x/(np.square(np.exp(x) + 1 + 1/(np.exp(x)+1))*(1+np.exp(-x)))
+        return (g1 + g2) * grad_output
+
+# ../codes/layers.py:7
+        self._saved_for_backward(input)
+        output = input @ self.W + self.b
+        return output
+
+# ../codes/layers.py:8
+        x = self._saved_tensor
+        grad_x = grad_output @ self.W.T
+        self.grad_W = x.T @ grad_output
+        self.grad_b = grad_output.sum(axis = 0)
+        return grad_x
+
+# ../codes/loss.py:1
+        exp = np.exp(input - np.max(input, axis=1, keepdims=True))
+        softmax = exp / np.sum(exp, axis=1, keepdims=True)
+        self.softmax = softmax
+        loss = np.sum(np.square(softmax - target), axis = 1)
+        return np.mean(loss)
+
+# ../codes/loss.py:2
+        B, C = input.shape
+        p = self.softmax
+        y = target
+        dL_dp = 2 * (p - y) / B
+        grad_input = p * (dL_dp - np.sum(dL_dp * p, axis=1, keepdims=True))
+        return grad_input
+
+# ../codes/loss.py:3
+        exp = np.exp(input)
+        softmax = exp / np.sum(exp, axis=1, keepdims=True)
+        self.softmax = softmax
+        Entropyloss = - np.sum(target * np.log(softmax),axis=1)
+        return np.mean(Entropyloss)
+
+# ../codes/loss.py:4
+        B = input.shape[0]
+        grad_input = (self.softmax - target) / B
+        return grad_input
+
+# ../codes/loss.py:5
+        B, C = input.shape
+        # exp = np.exp(input)
+        # softmax = exp / sum(exp, axis=1, keepdims = True)
+        self.margin = 5
+        target_index = np.argmax(target, axis=1)
+        x_t = input[np.arange(B), target_index].reshape(-1, 1)
+        h_k = self.margin - x_t + input
+        h_k[np.arange(B), target_index] = 0
+        loss = np.maximum(0, h_k).sum(axis = 1)
+        self.cache = (h_k, target_index)
+        return np.mean(loss)
+
+# ../codes/loss.py:6
+        B, C = input.shape
+        margins, t = self.cache
+
+        grad = np.zeros_like(input)
+        grad[margins > 0] = 1
+        counts = np.sum(margins > 0, axis=1)
+        grad[np.arange(B), t] = -counts
+
+        grad /= B
+        return grad
+
+# ../codes/loss.py:7
+
+# ../codes/loss.py:8
+
+
+########################
+# References
+########################
+
+########################
+# Other Modifications
+########################
+# _codes/utils.py -> ../codes/utils.py
+# 5 -
+# 5 + import csv
+# 6 + import matplotlib.pyplot as plt
+# 7 + import os
+# 24 +
+# 25 + def save_results_to_csv(loss_history, acc_history, filename="train_log.csv", meta=None, root = None):
+# 26 +     filename = os.path.join(root, filename)
+# 27 +     os.makedirs(os.path.dirname(filename), exist_ok=True)
+# 28 +     with open(filename, mode="w", newline="") as f:
+# 29 +         writer = csv.writer(f)
+# 30 +         if meta is not None:
+# 31 +             writer.writerow(["# meta", meta])
+# 32 +         writer.writerow(["epochs", "loss", "acc"])
+# 33 +         for i, (l, a) in enumerate(zip(loss_history, acc_history), 1):
+# 34 +             writer.writerow([i, f"{l:.5f}", f"{a:.5f}"])
+# 35 +
+# 36 +
+# 37 + def plot_results_from_csv(filename="train_log.csv", plot_file="train_plot.png", root = None):
+# 38 +     filename = os.path.join(root,filename)
+# 39 +     os.makedirs(os.path.dirname(filename), exist_ok=True)
+# 40 +     iters, losses, accs = [], [], []
+# 41 +
+# 42 +     with open(filename, mode="r") as f:
+# 43 +         first_line = f.readline()
+# 44 +         if first_line.startswith("#"):
+# 45 +             reader = csv.DictReader(f)
+# 46 +         else:
+# 47 +             f.seek(0)
+# 48 +             reader = csv.DictReader(f)
+# 49 +         for row in reader:
+# 50 +             iters.append(int(row["epochs"]))
+# 51 +             losses.append(float(row["loss"]))
+# 52 +             accs.append(float(row["acc"]))
+# 53 +
+# 54 +     plt.figure(figsize=(10, 4))
+# 55 +
+# 56 +     # Loss
+# 57 +     plt.subplot(1, 2, 1)
+# 58 +     plt.plot(iters, losses, label="Loss")
+# 59 +     plt.xlabel("Epoches")
+# 60 +     plt.ylabel("Loss")
+# 61 +     plt.title("Training Loss")
+# 62 +     plt.legend()
+# 63 +
+# 64 +     # Accuracy
+# 65 +     plt.subplot(1, 2, 2)
+# 66 +     plt.plot(iters, accs, label="Accuracy", color="orange")
+# 67 +     plt.xlabel("Epoches")
+# 68 +     plt.ylabel("Accuracy")
+# 69 +     plt.title("Training Accuracy")
+# 70 +     plt.legend()
+# 71 +     plt.tight_layout()
+# 72 +     plot_path = os.path.join(root, plot_file)
+# 73 +     os.makedirs(os.path.dirname(plot_path), exist_ok=True)
+# 74 +     plt.savefig(plot_path, dpi=300)
+# 75 +     plt.close()
+# 76 +
+# 77 +
+# 78 + def plot_results_from_csv_new(
+# 79 +     train_file="train_log.csv",
+# 80 +     test_file="test_log.csv",
+# 81 +     plot_file="train_test_plot.png",
+# 82 +     root=None,
+# 83 +     test_every=5
+# 84 + ):
+# 85 +     train_path = os.path.join(root, train_file)
+# 86 +     test_path  = os.path.join(root, test_file)
+# 87 +     os.makedirs(os.path.dirname(train_path), exist_ok=True)
+# 88 +
+# 89 +     train_epochs, train_losses, train_accs = [], [], []
+# 90 +     with open(train_path, "r") as f:
+# 91 +         first = f.readline()
+# 92 +         if not first.startswith("#"):
+# 93 +             f.seek(0)
+# 94 +         reader = csv.DictReader(f)
+# 95 +         for row in reader:
+# 96 +             train_epochs.append(int(row["epochs"]))
+# 97 +             train_losses.append(float(row["loss"]))
+# 98 +             train_accs.append(float(row["acc"]))
+# 99 +
+# 100 +     test_epochs, test_losses, test_accs = [], [], []
+# 101 +     with open(test_path, "r") as f:
+# 102 +         first = f.readline()
+# 103 +         if not first.startswith("#"):
+# 104 +             f.seek(0)
+# 105 +         reader = csv.DictReader(f)
+# 106 +         for row in reader:
+# 107 +             test_epochs.append(int(row["epochs"]))
+# 108 +             test_losses.append(float(row["loss"]))
+# 109 +             test_accs.append(float(row["acc"]))
+# 110 +
+# 111 +     if test_every is not None and len(test_epochs) >= 2:
+# 112 +         if all((test_epochs[i+1] - test_epochs[i]) == 1 for i in range(len(test_epochs)-1)):
+# 113 +             test_epochs = [e * test_every for e in test_epochs]
+# 114 +
+# 115 +     plt.figure(figsize=(10, 4))
+# 116 +
+# 117 +     # Loss
+# 118 +     plt.subplot(1, 2, 1)
+# 119 +     plt.plot(train_epochs, train_losses, label="Train Loss")
+# 120 +     plt.plot(test_epochs,  test_losses,  "o--", label="Test Loss")
+# 121 +     plt.xlabel("Epochs"); plt.ylabel("Loss"); plt.title("Train vs Test Loss"); plt.legend()
+# 122 +
+# 123 +     # Accuracy
+# 124 +     plt.subplot(1, 2, 2)
+# 125 +     plt.plot(train_epochs, train_accs, label="Train Accuracy")
+# 126 +     plt.plot(test_epochs,  test_accs,  "o--", label="Test Accuracy")
+# 127 +     plt.xlabel("Epochs"); plt.ylabel("Accuracy"); plt.title("Train vs Test Accuracy"); plt.legend()
+# 128 +
+# 129 +     plt.tight_layout()
+# 130 +     plot_path = os.path.join(root, plot_file)
+# 131 +     os.makedirs(os.path.dirname(plot_path), exist_ok=True)
+# 132 +     plt.savefig(plot_path, dpi=300)
+# 133 +     plt.close()
+# _codes/solve_net.py -> ../codes/solve_net.py
+# 20 -
+# 20 +     loss_ = []
+# 21 +     acc_ = []
+# 41 +
+# 42 +         loss_.append(loss_value)
+# 43 +         acc_.append(acc_value)
+# 46 +
+# 52 +     return np.mean(loss_), np.mean(acc_) # list
+# 68 +     return np.mean(loss_list), np.mean(acc_list)
+# _codes/run_mlp.py -> ../codes/run_mlp.py
+# 2 - from utils import LOG_INFO
+# 2 + from utils import LOG_INFO, save_results_to_csv, plot_results_from_csv, plot_results_from_csv_new
+# 7 + import argparse
+# 8 +
+# 9 + def get_activation(name: str):
+# 10 +     if name.lower() == "selu":
+# 11 +         return Selu("selu")
+# 12 +     elif name.lower() == "hardswish":
+# 13 +         return HardSwish("hardswish")
+# 14 +     elif name.lower() == "mish":
+# 15 +         return Mish("mish")
+# 16 +     else:
+# 17 +         raise ValueError(f"Unknown activation {name}")
+# 18 +
+# 19 + def get_loss(name: str):
+# 20 +     if name.lower() == "sce":
+# 21 +         return SoftmaxCrossEntropyLoss("sce")
+# 22 +     elif name.lower() == "brier":
+# 23 +         return BrierLoss("brier")
+# 24 +     elif name.lower() == "hinge":
+# 25 +         return HingeLoss("hinge")
+# 26 +     else:
+# 27 +         raise ValueError(f"Unknown loss {name}")
+# 9 - train_data, test_data, train_label, test_label = load_mnist_2d('data')
+# 31 + def main(args):
+# 11 - # Your model defintion here
+# 12 - # You should explore different model architecture
+# 13 - model = Network()
+# 14 - model.add(Linear('fc1', 784, 10, 0.01))
+# 16 - loss = BrierLoss(name='loss')
+# 33 +     train_data, test_data, train_label, test_label = load_mnist_2d('codes/data')
+# 35 +     # Your model defintion here
+# 36 +     # You should explore different model architecture
+# 37 +     model = Network()
+# 38 +     model.add(Linear("fc1", 784, args.hidden1, 0.01))
+# 39 +     model.add(get_activation(args.activation))
+# 40 +     if args.hidden2 is not None:
+# 41 +         model.add(Linear("fc2", args.hidden1, args.hidden2, 0.01))
+# 42 +         model.add(get_activation(args.activation))
+# 43 +         model.add(Linear("fc3", args.hidden2, 10, 0.01))
+# 44 +     else:
+# 45 +         model.add(Linear("fc2", args.hidden1, 10, 0.01))
+# 46 +
+# 47 +     loss = get_loss(args.loss)
+# 48 +     arch = f"{args.activation}_{args.loss}_h{args.hidden1}"
+# 18 - # Training configuration
+# 49 +     # Training configuration
+# 49 ? ++++
+# 19 - # You should adjust these hyperparameters
+# 50 +     # You should adjust these hyperparameters
+# 50 ? ++++
+# 20 - # NOTE: one iteration means model forward-backwards one batch of samples.
+# 51 +     # NOTE: one iteration means model forward-backwards one batch of samples.
+# 51 ? ++++
+# 21 - #       one epoch means model has gone through all the training samples.
+# 52 +     #       one epoch means model has gone through all the training samples.
+# 52 ? ++++
+# 22 - #       'disp_freq' denotes number of iterations in one epoch to display information.
+# 53 +     #       'disp_freq' denotes number of iterations in one epoch to display information.
+# 53 ? ++++
+# 24 - config = {
+# 55 +     config = {
+# 55 ? ++++
+# 25 -     'learning_rate': 0.0,
+# 26 -     'weight_decay': 0.0,
+# 27 -     'momentum': 0.0,
+# 28 -     'batch_size': 100,
+# 29 -     'max_epoch': 100,
+# 56 +         "learning_rate": args.lr,
+# 57 +         "weight_decay": args.wd,
+# 58 +         "momentum": args.mom,
+# 59 +         "batch_size": args.batch,
+# 60 +         "max_epoch": args.epoch,
+# 30 -     'disp_freq': 50,
+# 30 ?     ^         ^
+# 61 +         "disp_freq": 50,
+# 61 ?     ^^^^^         ^
+# 31 -     'test_epoch': 5
+# 31 ?     ^          ^
+# 62 +         "test_epoch": 5,
+# 62 ?     ^^^^^          ^   +
+# 32 - }
+# 63 +     }
+# 64 +
+# 65 +     trl,tracc,tel,teacc = [], [], [], []
+# 35 - for epoch in range(config['max_epoch']):
+# 68 +     for epoch in range(config['max_epoch']):
+# 68 ? ++++
+# 36 -     LOG_INFO('Training @ %d epoch...' % (epoch))
+# 69 +         LOG_INFO('Training @ %d epoch...' % (epoch))
+# 69 ? ++++
+# 37 -     train_net(model, loss, config, train_data, train_label, config['batch_size'], config['disp_freq'])
+# 70 +         train_loss, train_acc = train_net(model, loss, config, train_data, train_label, config['batch_size'], config['disp_freq'])
+# 70 ?    ++++++++++++++++++++++++++++
+# 71 +         trl.append(train_loss)
+# 72 +         tracc.append(train_acc)
+# 73 +         if (epoch + 1) % config['test_epoch'] == 0:
+# 74 +             LOG_INFO('Testing @ %d epoch...' % (epoch))
+# 75 +             test_loss, test_acc = test_net(model, loss, test_data, test_label, config['batch_size'])
+# 76 +             tel.append(test_loss)
+# 77 +             teacc.append(test_acc)
+# 39 -     if epoch % config['test_epoch'] == 0:
+# 40 -         LOG_INFO('Testing @ %d epoch...' % (epoch))
+# 41 -         test_net(model, loss, test_data, test_label, config['batch_size'])
+# 79 +     meta_info = f"{arch}_lr={config['learning_rate']}_mom={config['momentum']}_wd={config['weight_decay']}"
+# 80 +
+# 81 +     tag = f"_{meta_info}_ep{config['max_epoch']}"
+# 82 +     root = f"{args.trial}/{tag}"
+# 83 +     save_results_to_csv(trl, tracc, f"train{tag}.csv", meta_info, root)
+# 84 +     save_results_to_csv(tel, teacc, f"test{tag}.csv", meta_info, root)
+# 85 +     plot_results_from_csv(f"train{tag}.csv", f"train{tag}.png", root)
+# 86 +     plot_results_from_csv(f"test{tag}.csv", f"test{tag}.png", root)
+# 87 +     plot_results_from_csv_new(f"train{tag}.csv", f"test{tag}.csv", f"{tag}.png", root, config['test_epoch'])
+# 88 +
+# 89 + if __name__ == "__main__":
+# 90 +     parser = argparse.ArgumentParser()
+# 91 +     parser.add_argument("--activation", type=str, default="selu", help="Activation: selu|hardswish|mish")
+# 92 +     parser.add_argument("--loss", type=str, default="sce", help="Loss: sce|brier|hinge")
+# 93 +     parser.add_argument("--hidden1", type=int, default=128, help="Hidden layer 1 size")
+# 94 +     parser.add_argument("--hidden2", type=int, default=None, help="Hidden layer 2 size")
+# 95 +     parser.add_argument("--lr", type=float, default=0.01, help="Learning rate")
+# 96 +     parser.add_argument("--wd", type=float, default=0.001, help="Weight decay")
+# 97 +     parser.add_argument("--mom", type=float, default=0.1, help="Momentum")
+# 98 +     parser.add_argument("--batch", type=int, default=100, help="Batch size")
+# 99 +     parser.add_argument("--epoch", type=int, default=100, help="Max epochs")
+# 100 +     parser.add_argument("--trial", type=str, default=None, help="Name of this trial")
+# 101 +     args = parser.parse_args()
+# 102 +
+# 103 +     main(args)
+# 104 +
+# 105 +
+# 106 +
+

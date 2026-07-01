@@ -1,0 +1,155 @@
+########################
+# Missing Files
+########################
+# .DS_Store
+
+########################
+# Additional Files
+########################
+# __pycache__
+
+########################
+# Filled Code
+########################
+# ../codes/cnn/model.py:1
+    def __init__(self, num_features, eps=1e-5, momentum=0.1):
+        self.eps = eps
+        self.momentum = momentum
+        self.weight = Parameter(torch.ones(num_features))
+        self.bias = Parameter(torch.zeros(num_features))
+        self.register_buffer('running_mean', torch.zeros(num_features))
+        self.register_buffer('running_var', torch.ones(num_features))
+        if self.training:
+            mean = input.mean(dim=[0, 2, 3])  # [num_features]
+            var = input.var(dim=[0, 2, 3], unbiased=False)  # [num_features]
+
+            self.running_mean = (1 - self.momentum) * self.running_mean + self.momentum * mean
+            self.running_var = (1 - self.momentum) * self.running_var + self.momentum * var
+        else:
+            # Inference mode: use running statistics
+            mean = self.running_mean
+            var = self.running_var
+        input_norm = (input - mean.view(1, -1, 1, 1)) / torch.sqrt(var.view(1, -1, 1, 1) + self.eps)
+        output = self.weight.view(1, -1, 1, 1) * input_norm + self.bias.view(1, -1, 1, 1)
+
+        return output
+
+# ../codes/cnn/model.py:2
+        if self.training and self.p > 0:
+            mask = torch.bernoulli(torch.full_like(input, 1 - self.p))
+            output = input * mask / (1 - self.p)
+            return output
+        else:
+            return input
+
+# ../codes/cnn/model.py:3
+        input_size = 32
+        inchannels = 3
+        hidden1 = 48
+        hidden2 = 96
+        kernel1 = 6
+        kernel2 = 3
+        pool_kernel = 2
+        padding_ = 1
+
+        self.conv1 = nn.Conv2d(inchannels, hidden1, kernel_size=kernel1, padding=padding_)
+        self.batchn1 = BatchNorm2d(hidden1)
+        self.pool1 = nn.MaxPool2d(kernel_size=pool_kernel)
+        self.conv2 = nn.Conv2d(hidden1, hidden2, kernel_size=kernel2, padding=padding_)
+        self.batchn2 = BatchNorm2d(hidden2)
+        self.pool2 = nn.MaxPool2d(kernel_size=pool_kernel)
+
+        conv1_size = (input_size - kernel1 + 2*padding_) // 1 + 1   # stride = 1
+        conv1_size = (conv1_size - pool_kernel) // pool_kernel + 1
+        conv2_size = (conv1_size - kernel2 + 2*padding_) // 1 + 1
+        conv2_size = (conv1_size - pool_kernel) // pool_kernel + 1
+        lin_input = hidden2 * conv2_size * conv2_size
+
+        self.lin = nn.Linear(lin_input, 10)
+        self.dropout = Dropout(drop_rate)
+
+# ../codes/cnn/model.py:4
+        x = self.conv1(x)
+        x = self.batchn1(x)
+        x = nn.functional.relu(x)
+        x = self.dropout(x)
+        x = self.pool1(x)
+
+        x = self.conv2(x)
+        x = self.batchn2(x)
+        x = nn.functional.relu(x)
+        x = self.dropout(x)
+        x = self.pool2(x)
+
+        x = x.view(x.size(0), -1)
+        logits = self.lin(x)
+
+# ../codes/mlp/model.py:1
+    def __init__(self, num_features, eps=1e-5, momentum=0.1):
+        self.eps = eps
+        self.momentum = momentum
+        self.weight = Parameter(torch.ones(num_features))
+        self.bias = Parameter(torch.zeros(num_features))
+        self.register_buffer('running_mean', torch.zeros(num_features))
+        self.register_buffer('running_var', torch.ones(num_features))
+        # Weight and bias are already initialized above
+        if self.training:
+            mean = input.mean(dim=0)  # [num_features]
+            var = input.var(dim=0, unbiased=False)  # [num_features]
+
+            self.running_mean = (1 - self.momentum) * self.running_mean + self.momentum * mean
+            self.running_var = (1 - self.momentum) * self.running_var + self.momentum * var
+        else:
+            mean = self.running_mean
+            var = self.running_var
+        input_norm = (input - mean) / torch.sqrt(var + self.eps)
+        output = self.weight * input_norm + self.bias
+        return output
+
+# ../codes/mlp/model.py:2
+        if self.training and self.p > 0:
+            mask = torch.rand_like(input) > self.p
+            output = input * mask.float() / (1 - self.p)
+            return output
+        else:
+            # During inference or when p=0, return input unchanged
+            return input
+
+# ../codes/mlp/model.py:3
+        input_size = 3 * 32 * 32   # 3072
+        hidden1 = 256
+        feat_num = 10
+        self.lin1 = nn.Linear(input_size, hidden1)
+        self.lin2 = nn.Linear(hidden1, feat_num)
+        self.batchn = BatchNorm1d(hidden1)
+        self.dropout = Dropout(drop_rate)
+
+# ../codes/mlp/model.py:4
+        x = self.batchn(self.lin1(x))
+        x = nn.functional.relu(x)
+        logits = self.lin2(self.dropout(x))
+
+
+########################
+# References
+########################
+
+########################
+# Other Modifications
+########################
+# _codes/cnn/main.py -> ../codes/cnn/main.py
+# 13 - from load_data import load_cifar_2d
+# 13 ?                                  ^
+# 13 + from load_data import load_cifar_4d
+# 13 ?                                  ^
+# 105 -         X_train, X_test, y_train, y_test = load_cifar_2d(args.data_dir)
+# 105 ?                                                       ^
+# 105 +         X_train, X_test, y_train, y_test = load_cifar_4d(args.data_dir)
+# 105 ?                                                       ^
+# 160 -         X_train, X_test, y_train, y_test = load_cifar_2d(args.data_dir)
+# 160 ?                                                       ^
+# 160 +         X_train, X_test, y_train, y_test = load_cifar_4d(args.data_dir)
+# 160 ?                                                       ^
+# _codes/cnn/model.py -> ../codes/cnn/model.py
+# 3 + from re import X
+

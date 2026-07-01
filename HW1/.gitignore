@@ -1,0 +1,5 @@
+.pdf
+data/
+__pycache__/
+*.zip
+outputs/
